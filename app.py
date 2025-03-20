@@ -28,21 +28,27 @@ class ExerciseCounter:
         if angle < down_thresh and self.stage == 'up':
             self.stage = "down"
             self.count += 1
+            
+    def get_count(self):
+        return self.count
 
-# Initialize counters (as global variables)
-bicep_counter = ExerciseCounter()
-squat_counter = ExerciseCounter()
-pushup_counter = ExerciseCounter()
+# Create session state variables for counters
+if 'bicep_counter' not in st.session_state:
+    st.session_state.bicep_counter = ExerciseCounter()
+if 'squat_counter' not in st.session_state:
+    st.session_state.squat_counter = ExerciseCounter()
+if 'pushup_counter' not in st.session_state:
+    st.session_state.pushup_counter = ExerciseCounter()
 
 # Video Processing Class for Streamlit WebRTC
 class PoseProcessor(VideoProcessorBase):
     def __init__(self):
         self.pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-        
+
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        
-        # Get image dimensions
+
+        # Get frame dimensions
         h, w = img.shape[:2]
 
         # Convert to RGB for MediaPipe
@@ -73,49 +79,53 @@ class PoseProcessor(VideoProcessorBase):
             shoulder_angle = calculate_angle(hip, shoulder, elbow)
 
             # Update exercise counters
-            bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
-            squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
-            pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
+            st.session_state.bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
+            st.session_state.squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
+            st.session_state.pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
 
             # Draw pose landmarks
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        # Create a semi-transparent background for the counter text
+        # Display exercise counts on screen with a background to make text more readable
+        # Create a semi-transparent overlay for the counts
         overlay = img.copy()
-        cv2.rectangle(overlay, (5, 10), (300, 160), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+        cv2.rectangle(overlay, (10, 10), (300, 160), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
         
-        # Display exercise counts with improved visibility
-        cv2.putText(img, f"Bicep Curls: {bicep_counter.count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(img, f"Squats: {squat_counter.count}", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(img, f"Pushups: {pushup_counter.count}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        # Add text with counts
+        cv2.putText(img, f"Bicep Curls: {st.session_state.bicep_counter.get_count()}", 
+                   (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(img, f"Squats: {st.session_state.squat_counter.get_count()}", 
+                   (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(img, f"Pushups: {st.session_state.pushup_counter.get_count()}", 
+                   (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Configure RTC with explicit options
-rtc_configuration = RTCConfiguration(
+# Create a proper RTC configuration
+rtc_config = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
 
-# Add instructions for users
+# Instructions for users
 st.markdown("""
-### Instructions:
-1. Click the 'START' button below to activate your camera
-2. Stand back so your full body is visible
-3. Perform exercises and see the counter track your reps
+### How to use:
+1. Click the 'START' button below to activate your webcam
+2. Position yourself so your whole body is visible
+3. Start exercising - the app will count your reps automatically!
 """)
 
-# Start real-time video processing with improved configuration
+# Start real-time video processing with proper configuration
 webrtc_ctx = webrtc_streamer(
     key="exercise-tracker",
     video_processor_factory=PoseProcessor,
-    rtc_configuration=rtc_configuration,
+    rtc_configuration=rtc_config,
     media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
 )
 
-# Add a note about privacy
-st.markdown("""
----
-**Note:** All processing happens locally in your browser. No video data is sent to any server.
-""")
+# Reset button for counters
+if st.button("Reset Counters"):
+    st.session_state.bicep_counter = ExerciseCounter()
+    st.session_state.squat_counter = ExerciseCounter()
+    st.session_state.pushup_counter = ExerciseCounter()
+    st.experimental_rerun()
