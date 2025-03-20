@@ -85,7 +85,14 @@ class PoseProcessor(VideoProcessorBase):
         return frame.from_ndarray(img, format="bgr24")
 
 # Start real-time video processing
-webrtc_streamer(key="exercise-tracker", video_processor_factory=PoseProcessor)
+webrtc_streamer(
+    key="exercise-tracker",
+    video_processor_factory=PoseProcessor,
+    rtc_configuration={
+        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    }
+)
+
 
 # Show live exercise counts
 st.write(f"### Bicep Curls: {bicep_counter.count}")
