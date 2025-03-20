@@ -4,12 +4,6 @@ import mediapipe as mp
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
-# Ensure OpenCV is working properly in headless environment
-try:
-    cv2.setNumThreads(0)
-except:
-    pass
-
 st.title("Real-Time AI Exercise Tracker 🏋️‍♂️")
 
 mp_drawing = mp.solutions.drawing_utils
@@ -34,27 +28,21 @@ class ExerciseCounter:
         if angle < down_thresh and self.stage == 'up':
             self.stage = "down"
             self.count += 1
-            
-    def get_count(self):
-        return self.count
 
-# Create session state variables for counters
-if 'bicep_counter' not in st.session_state:
-    st.session_state.bicep_counter = ExerciseCounter()
-if 'squat_counter' not in st.session_state:
-    st.session_state.squat_counter = ExerciseCounter()
-if 'pushup_counter' not in st.session_state:
-    st.session_state.pushup_counter = ExerciseCounter()
+# Initialize counters (as global variables)
+bicep_counter = ExerciseCounter()
+squat_counter = ExerciseCounter()
+pushup_counter = ExerciseCounter()
 
 # Video Processing Class for Streamlit WebRTC
 class PoseProcessor(VideoProcessorBase):
     def __init__(self):
         self.pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
+        
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-
-        # Get frame dimensions
+        
+        # Get image dimensions
         h, w = img.shape[:2]
 
         # Convert to RGB for MediaPipe
@@ -65,73 +53,69 @@ class PoseProcessor(VideoProcessorBase):
             landmarks = results.pose_landmarks.landmark
 
             # Extract key points
-            try:
-                shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, 
-                            landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-                elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, 
-                         landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-                wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, 
-                         landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
-                
-                hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, 
-                       landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-                knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, 
-                        landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-                ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, 
-                         landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, 
+                        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, 
+                     landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, 
+                     landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+            
+            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, 
+                   landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, 
+                    landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+            ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, 
+                     landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
 
-                # Calculate angles
-                elbow_angle = calculate_angle(shoulder, elbow, wrist)
-                knee_angle = calculate_angle(hip, knee, ankle)
-                shoulder_angle = calculate_angle(hip, shoulder, elbow)
+            # Calculate angles
+            elbow_angle = calculate_angle(shoulder, elbow, wrist)
+            knee_angle = calculate_angle(hip, knee, ankle)
+            shoulder_angle = calculate_angle(hip, shoulder, elbow)
 
-                # Update exercise counters
-                st.session_state.bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
-                st.session_state.squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
-                st.session_state.pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
-            except:
-                pass  # Skip if landmarks are not fully visible
+            # Update exercise counters
+            bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
+            squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
+            pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
 
             # Draw pose landmarks
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        # Display exercise counts on screen with a background to make text more readable
-        # Create a semi-transparent overlay for the counts
+        # Create a semi-transparent background for the counter text
         overlay = img.copy()
-        cv2.rectangle(overlay, (10, 10), (300, 160), (0, 0, 0), -1)
-        cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
+        cv2.rectangle(overlay, (5, 10), (300, 160), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
         
-        # Add text with counts
-        cv2.putText(img, f"Bicep Curls: {st.session_state.bicep_counter.get_count()}", 
-                   (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(img, f"Squats: {st.session_state.squat_counter.get_count()}", 
-                   (20, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(img, f"Pushups: {st.session_state.pushup_counter.get_count()}", 
-                   (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        # Display exercise counts with improved visibility
+        cv2.putText(img, f"Bicep Curls: {bicep_counter.count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(img, f"Squats: {squat_counter.count}", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(img, f"Pushups: {pushup_counter.count}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Instructions for users
+# Configure RTC with explicit options
+rtc_configuration = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
+# Add instructions for users
 st.markdown("""
-### How to use:
-1. Click the 'START' button below to activate your webcam
-2. Position yourself so your whole body is visible
-3. Start exercising - the app will count your reps automatically!
+### Instructions:
+1. Click the 'START' button below to activate your camera
+2. Stand back so your full body is visible
+3. Perform exercises and see the counter track your reps
 """)
 
-# Start real-time video processing with proper configuration
+# Start real-time video processing with improved configuration
 webrtc_ctx = webrtc_streamer(
     key="exercise-tracker",
     video_processor_factory=PoseProcessor,
-    rtc_configuration=RTCConfiguration(
-        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    ),
+    rtc_configuration=rtc_configuration,
     media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
 )
 
-# Reset button for counters
-if st.button("Reset Counters"):
-    st.session_state.bicep_counter = ExerciseCounter()
-    st.session_state.squat_counter = ExerciseCounter()
-    st.session_state.pushup_counter = ExerciseCounter()
-    st.experimental_rerun()
+# Add a note about privacy
+st.markdown("""
+---
+**Note:** All processing happens locally in your browser. No video data is sent to any server.
+""")
