@@ -2,7 +2,7 @@ import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
 st.title("Real-Time AI Exercise Tracker 🏋️‍♂️")
 
@@ -29,7 +29,7 @@ class ExerciseCounter:
             self.stage = "down"
             self.count += 1
 
-# Initialize counters
+# Initialize counters (as global variables)
 bicep_counter = ExerciseCounter()
 squat_counter = ExerciseCounter()
 pushup_counter = ExerciseCounter()
@@ -38,9 +38,12 @@ pushup_counter = ExerciseCounter()
 class PoseProcessor(VideoProcessorBase):
     def __init__(self):
         self.pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
+        
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
+        
+        # Get image dimensions
+        h, w = img.shape[:2]
 
         # Convert to RGB for MediaPipe
         image_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -77,28 +80,42 @@ class PoseProcessor(VideoProcessorBase):
             # Draw pose landmarks
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        # Display exercise counts on screen
+        # Create a semi-transparent background for the counter text
+        overlay = img.copy()
+        cv2.rectangle(overlay, (5, 10), (300, 160), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+        
+        # Display exercise counts with improved visibility
         cv2.putText(img, f"Bicep Curls: {bicep_counter.count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(img, f"Squats: {squat_counter.count}", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(img, f"Pushups: {pushup_counter.count}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Start real-time video processing
-webrtc_streamer(
-    key="exercise-tracker",
-    video_processor_factory=PoseProcessor,
-    frontend_rtc_configuration={
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    },
-    server_rtc_configuration={
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    }
+# Configure RTC with explicit options
+rtc_configuration = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
 
+# Add instructions for users
+st.markdown("""
+### Instructions:
+1. Click the 'START' button below to activate your camera
+2. Stand back so your full body is visible
+3. Perform exercises and see the counter track your reps
+""")
 
+# Start real-time video processing with improved configuration
+webrtc_ctx = webrtc_streamer(
+    key="exercise-tracker",
+    video_processor_factory=PoseProcessor,
+    rtc_configuration=rtc_configuration,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
+)
 
-# Show live exercise counts
-st.write(f"### Bicep Curls: {bicep_counter.count}")
-st.write(f"### Squats: {squat_counter.count}")
-st.write(f"### Pushups: {pushup_counter.count}")
+# Add a note about privacy
+st.markdown("""
+---
+**Note:** All processing happens locally in your browser. No video data is sent to any server.
+""")
