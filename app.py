@@ -3,7 +3,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import av
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration, WebRtcMode
 import time
 
 # Page configuration
@@ -461,7 +461,7 @@ def main():
         # Create the WebRTC streamer
         ctx = webrtc_streamer(
             key="pose-detection",
-            mode="sendrecv",
+            mode=WebRtcMode.SENDRECV,
             rtc_configuration=rtc_configuration,
             video_processor_factory=lambda: PoseProcessor(
                 detection_confidence=detection_confidence,
