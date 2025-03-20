@@ -4,6 +4,12 @@ import mediapipe as mp
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
+# Ensure OpenCV is working properly in headless environment
+try:
+    cv2.setNumThreads(0)
+except:
+    pass
+
 st.title("Real-Time AI Exercise Tracker 🏋️‍♂️")
 
 mp_drawing = mp.solutions.drawing_utils
@@ -59,29 +65,32 @@ class PoseProcessor(VideoProcessorBase):
             landmarks = results.pose_landmarks.landmark
 
             # Extract key points
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, 
-                        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, 
-                     landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, 
-                     landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
-            
-            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, 
-                   landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, 
-                    landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-            ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, 
-                     landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+            try:
+                shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, 
+                            landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, 
+                         landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+                wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, 
+                         landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+                
+                hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, 
+                       landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, 
+                        landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+                ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, 
+                         landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
 
-            # Calculate angles
-            elbow_angle = calculate_angle(shoulder, elbow, wrist)
-            knee_angle = calculate_angle(hip, knee, ankle)
-            shoulder_angle = calculate_angle(hip, shoulder, elbow)
+                # Calculate angles
+                elbow_angle = calculate_angle(shoulder, elbow, wrist)
+                knee_angle = calculate_angle(hip, knee, ankle)
+                shoulder_angle = calculate_angle(hip, shoulder, elbow)
 
-            # Update exercise counters
-            st.session_state.bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
-            st.session_state.squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
-            st.session_state.pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
+                # Update exercise counters
+                st.session_state.bicep_counter.update(elbow_angle, up_thresh=160, down_thresh=30)
+                st.session_state.squat_counter.update(knee_angle, up_thresh=170, down_thresh=90)
+                st.session_state.pushup_counter.update(shoulder_angle, up_thresh=160, down_thresh=45)
+            except:
+                pass  # Skip if landmarks are not fully visible
 
             # Draw pose landmarks
             mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
@@ -102,11 +111,6 @@ class PoseProcessor(VideoProcessorBase):
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Create a proper RTC configuration
-rtc_config = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
-
 # Instructions for users
 st.markdown("""
 ### How to use:
@@ -119,7 +123,9 @@ st.markdown("""
 webrtc_ctx = webrtc_streamer(
     key="exercise-tracker",
     video_processor_factory=PoseProcessor,
-    rtc_configuration=rtc_config,
+    rtc_configuration=RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    ),
     media_stream_constraints={"video": True, "audio": False},
 )
 
