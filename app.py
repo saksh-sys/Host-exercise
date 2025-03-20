@@ -88,10 +88,14 @@ class PoseProcessor(VideoProcessorBase):
 webrtc_streamer(
     key="exercise-tracker",
     video_processor_factory=PoseProcessor,
-    rtc_configuration={
+    frontend_rtc_configuration={
+        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    },
+    server_rtc_configuration={
         "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
     }
 )
+
 
 
 # Show live exercise counts
