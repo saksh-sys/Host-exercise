@@ -461,7 +461,7 @@ def main():
         # Create the WebRTC streamer
         ctx = webrtc_streamer(
             key="pose-detection",
-            mode=webrtc_streamer.WebRtcMode.SENDRECV,
+            mode="sendrecv",
             rtc_configuration=rtc_configuration,
             video_processor_factory=lambda: PoseProcessor(
                 detection_confidence=detection_confidence,
