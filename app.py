@@ -4,7 +4,6 @@ import mediapipe as mp
 import numpy as np
 import av
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
-from PIL import Image
 import time
 
 # Page configuration
@@ -20,13 +19,6 @@ mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
 
-# Custom drawing spec for better visibility
-custom_drawing_spec = mp_drawing.DrawingSpec(
-    color=(0, 255, 0),
-    thickness=2,
-    circle_radius=2
-)
-
 # Function to calculate angle between three points
 def calculate_angle(a, b, c):
     a = np.array(a)  # First point
@@ -38,7 +30,7 @@ def calculate_angle(a, b, c):
     bc = c - b
     
     # Calculate dot product
-    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc) + 1e-6)
     cosine_angle = np.clip(cosine_angle, -1.0, 1.0)  # Ensure value is within domain of arccos
     
     # Calculate angle in degrees
@@ -151,25 +143,34 @@ def identify_exercise(landmarks, image_shape):
         shoulder_angle = (l_shoulder_angle + r_shoulder_angle) / 2
         
         # Check visibility of key landmarks
+        # Note: Visibility might not be available in older versions of mediapipe
         visibility_threshold = 0.65
-        bicep_visibility = min(
-            landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].visibility or 0
-        )
         
-        squat_visibility = min(
-            landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].visibility or 0
-        )
-        
-        pushup_visibility = min(
-            landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].visibility or 0,
-            landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility or 0
-        )
+        # Handle potential compatibility issues with different MediaPipe versions
+        try:
+            bicep_visibility = min(
+                landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].visibility or 0
+            )
+            
+            squat_visibility = min(
+                landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].visibility or 0
+            )
+            
+            pushup_visibility = min(
+                landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].visibility or 0,
+                landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility or 0
+            )
+        except AttributeError:
+            # If visibility is not available, assume high visibility
+            bicep_visibility = 1.0
+            squat_visibility = 1.0
+            pushup_visibility = 1.0
         
         # Feature combinations for exercise identification
         exercises = {
@@ -242,11 +243,19 @@ class PoseProcessor(VideoProcessorBase):
     def __init__(self, detection_confidence=0.5, tracking_confidence=0.5):
         self.detection_confidence = detection_confidence
         self.tracking_confidence = tracking_confidence
-        self.pose = mp_pose.Pose(
-            min_detection_confidence=detection_confidence,
-            min_tracking_confidence=tracking_confidence,
-            model_complexity=1  # Using more complex model for better accuracy
-        )
+        # Use model_complexity=1 if available, otherwise use default parameters
+        try:
+            self.pose = mp_pose.Pose(
+                min_detection_confidence=detection_confidence,
+                min_tracking_confidence=tracking_confidence,
+                model_complexity=1
+            )
+        except TypeError:
+            # Fallback for older versions
+            self.pose = mp_pose.Pose(
+                min_detection_confidence=detection_confidence,
+                min_tracking_confidence=tracking_confidence
+            )
         self.current_exercise = "unknown"
         self.exercise_confidence = 0
         self.angles = {}
@@ -390,8 +399,8 @@ def main():
     st.sidebar.markdown('<h2 class="sub-header">Settings</h2>', unsafe_allow_html=True)
     
     # Model settings
-    detection_confidence = st.sidebar.slider('Min Detection Confidence', min_value=0.0, max_value=1.0, value=0.5)
-    tracking_confidence = st.sidebar.slider('Min Tracking Confidence', min_value=0.0, max_value=1.0, value=0.5)
+    detection_confidence = st.sidebar.slider('Min Detection Confidence', min_value=0.0, max_value=1.0, value=0.5, step=0.05)
+    tracking_confidence = st.sidebar.slider('Min Tracking Confidence', min_value=0.0, max_value=1.0, value=0.5, step=0.05)
     
     # Exercise settings
     st.sidebar.markdown('<h2 class="sub-header">Exercise Counters</h2>', unsafe_allow_html=True)
